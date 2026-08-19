@@ -3,6 +3,7 @@
 .vscode/
 misc/
 
-.env/
+.env
+
 
 
