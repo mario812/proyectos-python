@@ -1,186 +1,110 @@
 import os
-import json
-from datetime import datetime
-from openai import OpenAI
+import math
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
-# Cargar variables de entorno desde .env
+# Cargar variables de entorno
 load_dotenv()
 
-class DeepSeekAgent:
-    """
-    Agente simple para interactuar con el modelo DeepSeek.
-    """
-    
-    def __init__(self, api_key=None, model="deepseek-chat"):
-        """
-        Inicializa el agente con la clave API y modelo.
-        """
-        self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
-        
-        if not self.api_key:
-            raise ValueError(
-                "⚠️ No se encontró DEEPSEEK_API_KEY. "
-                "Configúrala en .env o pásala al constructor."
-            )
-        
-        # Configurar el cliente OpenAI para DeepSeek
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-        )
-        self.model = model
-        self.history = []  # Historial de conversación
-        self.history.append({
-            "role": "system",
-            "content": "Eres un asistente útil, profesional y conciso."
-        })
-    
-    def chat(self, user_message, temperature=0.7, max_tokens=1000):
-        """
-        Envía un mensaje al modelo y recibe la respuesta.
-        """
-        # Agregar mensaje del usuario al historial
-        self.history.append({
-            "role": "user",
-            "content": user_message
-        })
-        
-        try:
-            # Llamada a la API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=self.history,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-            
-            # Extraer respuesta del asistente
-            assistant_message = response.choices[0].message.content
-            
-            # Guardar en historial
-            self.history.append({
-                "role": "assistant",
-                "content": assistant_message
-            })
-            
-            return assistant_message
-            
-        except Exception as e:
-            return f"❌ Error al comunicarse con DeepSeek: {str(e)}"
-    
-    def reset_history(self):
-        """
-        Reinicia el historial de conversación, manteniendo solo el prompt de sistema.
-        """
-        self.history = [
-            {"role": "system", "content": "Eres un asistente útil, profesional y conciso."}
-        ]
-        print("🔄 Historial reiniciado.")
-    
-    def save_response(self, user_message, response, filename=None):
-        """
-        Guarda la conversación en un archivo JSON.
-        """
-        if filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"output/conversacion_{timestamp}.json"
-        
-        # Asegurar carpeta output
-        os.makedirs("output", exist_ok=True)
-        
-        # Cargar historial existente o crear nuevo
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            data = []
-        
-        # Agregar nueva interacción
-        data.append({
-            "timestamp": datetime.now().isoformat(),
-            "user": user_message,
-            "assistant": response
-        })
-        
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        
-        print(f"✅ Conversación guardada en: {filename}")
-    
-    def show_history(self):
-        """
-        Muestra el historial de la conversación actual.
-        """
-        print("\n📜 HISTORIAL DE CONVERSACIÓN:")
-        print("-" * 50)
-        for i, msg in enumerate(self.history):
-            if msg["role"] != "system":  # Omitir prompt de sistema
-                print(f"[{msg['role'].upper()}] {msg['content'][:100]}...")
-        print("-" * 50)
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    raise ValueError("Error: Variable GEMINI_API_KEY no encontrada en el entorno.")
 
+# ==========================================
+# 1. Definición de herramientas (Tools)
+# ==========================================
 
-def main():
-    """
-    Función principal para usar el agente desde consola.
-    """
-    print("\n" + "="*60)
-    print("🤖 AGENTE DEEPSEEK v1.0")
-    print("="*60)
+def calculate_expression(expression: str) -> str:
+    """Evalúa una expresión matemática segura en Python.
     
-    # Crear agente
+    Args:
+        expression: Cadena con la fórmula matemática a evaluar (ej: '25 * 4 + sqrt(144)').
+    """
     try:
-        agent = DeepSeekAgent()
-        print("✅ Agente inicializado correctamente.")
-        print(f"📌 Modelo: {agent.model}")
-    except ValueError as e:
-        print(e)
-        return
+        allowed_globals = {
+            "__builtins__": {},
+            "sqrt": math.sqrt,
+            "sin": math.sin,
+            "cos": math.cos,
+            "tan": math.tan,
+            "pi": math.pi,
+            "pow": math.pow,
+            "log": math.log
+        }
+        result = eval(expression, allowed_globals)
+        return f"Resultado: {result}"
+    except Exception as e:
+        return f"Error al calcular la expresión: {str(e)}"
+
+def check_crypto_price(symbol: str) -> str:
+    """Obtiene el precio simulado o de referencia de un criptoactivo o divisa.
     
-    print("\n💡 COMANDOS:")
-    print("  /reset  - Reiniciar historial")
-    print("  /save   - Guardar conversación actual")
-    print("  /history- Mostrar historial")
-    print("  /exit   - Salir")
-    print("-" * 60)
-    print("¡Escribe tu mensaje para el asistente!\n")
-    
+    Args:
+        symbol: Ticker o símbolo del activo (ej: 'SOL', 'BTC', 'ETH').
+    """
+    mock_database = {
+        "SOL": "178.50 USD (+4.2% 24h)",
+        "BTC": "94,200.00 USD (+1.8% 24h)",
+        "ETH": "3,450.00 USD (-0.5% 24h)"
+    }
+    symbol_upper = symbol.strip().upper()
+    price = mock_database.get(symbol_upper, "Activo no encontrado en la base de datos local.")
+    return f"Precio para {symbol_upper}: {price}"
+
+# ==========================================
+# 2. Inicialización del Cliente y Agente
+# ==========================================
+
+client = genai.Client(api_key=api_key)
+
+SYSTEM_INSTRUCTION = """
+Eres un agente de IA autónomo y analítico.
+Tu tarea es responder preguntas de los usuarios utilizando tus herramientas disponibles cuando sea necesario.
+Si una pregunta involucra cálculos matemáticos o consulta de precios, SIEMPRE usa las herramientas antes de responder.
+"""
+
+# Configuración del agente con llamada a funciones activada
+agent_config = types.GenerateContentConfig(
+    system_instruction=SYSTEM_INSTRUCTION,
+    temperature=0.2,
+    tools=[calculate_expression, check_crypto_price]
+)
+
+# Inicializar sesión de chat persistente (mantiene memoria conversacional)
+agent_session = client.chats.create(
+    model="gemini-2.5-flash",
+    config=agent_config
+)
+
+# ==========================================
+# 3. Bucle de ejecución (Loop interactivo)
+# ==========================================
+
+def run_agent_loop():
+    print("=== Agente Gemini Activo ===")
+    print("Herramientas integradas: [Calculadora, Consulta de Precios]")
+    print("Escribe 'salir' para terminar.\n")
+
     while True:
         try:
-            user_input = input("\n🧑 Tú: ").strip()
-            
+            user_input = input("Usuario > ").strip()
             if not user_input:
                 continue
-            
-            # Comandos especiales
-            if user_input.lower() == "/exit":
-                print("👋 ¡Hasta luego!")
+            if user_input.lower() in ["salir", "exit", "quit"]:
+                print("Finalizando sesión del agente.")
                 break
-            elif user_input.lower() == "/reset":
-                agent.reset_history()
-                continue
-            elif user_input.lower() == "/save":
-                if agent.history:
-                    agent.save_response("", "")
-                else:
-                    print("ℹ️ No hay conversación para guardar.")
-                continue
-            elif user_input.lower() == "/history":
-                agent.show_history()
-                continue
-            
-            # Enviar mensaje al agente
-            print("\n🤖 Asistente: ", end="", flush=True)
-            response = agent.chat(user_input)
-            print(response)
-            
-        except KeyboardInterrupt:
-            print("\n\n👋 ¡Hasta luego!")
-            break
-        except Exception as e:
-            print(f"❌ Error inesperado: {e}")
 
+            # Envío del mensaje al agente
+            response = agent_session.send_message(user_input)
+            print(f"\nAgente > {response.text}\n")
+
+        except KeyboardInterrupt:
+            print("\nInterrupción detectada. Cerrando...")
+            break
+        except Exception as err:
+            print(f"\n[Error]: {err}\n")
 
 if __name__ == "__main__":
-    main()
+    run_agent_loop()
     
